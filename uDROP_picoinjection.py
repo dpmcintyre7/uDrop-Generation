@@ -1,5 +1,5 @@
 """GUI display for uDROP setup
-Usage: python3 uDROP_Generation.py name_of_video.mp4
+Usage: python3 uDROP_picoinjection.py name_of_video.mp4
 Note that you can omit the video path if you already have something in your frames folder that you'd like to evaluate.
 """
 
@@ -22,7 +22,9 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 import math
+from operator import add, sub
 
 
 
@@ -38,8 +40,10 @@ class SetupGUI:
 		self.makeFrames(vid_path)
 
 		#Init user selections
-		self.bound_top_left = [-1,-1]
-		self.bound_bottom_right = [-1,-1]
+		self.bound_top_left1 = [-1,-1]
+		self.bound_bottom_right1 = [-1,-1]
+		self.bound_top_left2 = [-1,-1]
+		self.bound_bottom_right2 = [-1,-1]
 		self.channel_selections = [[0,0],[0,0],[0,0]]
 		self.select_index = 0
 
@@ -71,7 +75,7 @@ class SetupGUI:
 		#Display the first frame
 		self.img = ImageTk.PhotoImage(raw_image)
 
-		canvas_frame = tkinter.Frame(self.root) 
+		canvas_frame = tkinter.Frame(self.root)
 		canvas_frame.pack()
 
 
@@ -154,21 +158,28 @@ class SetupGUI:
 		# Then the line end
 		# Then the line offset
 		if self.select_index == 0:
-			self.bound_top_left = [event.x,event.y]
+			self.bound_top_left1 = [event.x,event.y]
 			self.select_index += 1
 		elif self.select_index == 1:
-			self.bound_bottom_right = [event.x,event.y]
+			self.bound_bottom_right1 = [event.x,event.y]
 			self.drawGUI()
 			self.select_index += 1
+		#Add in second bounding box
 		elif self.select_index == 2:
+			self.bound_top_left2 = [event.x, event.y]
+			self.bound_bottom_right2 = list(map(add, self.bound_top_left2,
+												list(map(sub, self.bound_bottom_right1, self.bound_top_left1))))
+			self.drawGUI()
+			self.select_index += 1
+		elif self.select_index == 3:
 			self.channel_selections[0][0] = event.x
 			self.channel_selections[0][1] = event.y
 			self.select_index += 1
-		elif self.select_index == 3:
+		elif self.select_index == 4:
 			self.channel_selections[1][0] = event.x
 			self.channel_selections[1][1] = event.y
 			self.select_index += 1
-		elif self.select_index == 4:
+		elif self.select_index == 5:
 			self.channel_selections[2][0] = event.x
 			self.channel_selections[2][1] = event.y
 			self.getIntersectPoint()
@@ -177,12 +188,12 @@ class SetupGUI:
 
 	def getIntersectPoint(self):
 		"""Return the intersection of the line segment with the perpendicular line that runs through the third point"""
-	
+
 		#If vertical
 		if self.channel_selections[0][0] == self.channel_selections[1][0]:
 			#Return the y position of the third point and the x position of the line
 			self.intersect_point = [self.channel_selections[0][0],self.channel_selections[2][1]]
-		
+
 		#If horizontal
 		elif self.channel_selections[0][1] == self.channel_selections[1][1]:
 			#Return the x position of the third point and the y position of the line
@@ -204,20 +215,26 @@ class SetupGUI:
 			self.intersect_point = [intersectionX,intersectionY]
 
 
-		
+
 
 	def confirm(self):
 		"""Submit input parameters to be analyzed"""
 
 		#Don't do anything unless the user is finished drawing
-		if(self.select_index != 5):
+		if(self.select_index != 6):
 			return
 
 		#Parse all the user inputs
-		start_x = round(self.bound_top_left[0]*self.resize_ratio)
-		start_y = round(self.bound_top_left[1]*self.resize_ratio)
-		width = round(abs(self.bound_bottom_right[0] - self.bound_top_left[0])*self.resize_ratio)
-		height = round(abs(self.bound_bottom_right[1] - self.bound_top_left[1])*self.resize_ratio)
+		start_x1 = round(self.bound_top_left1[0]*self.resize_ratio)
+		start_y1 = round(self.bound_top_left1[1]*self.resize_ratio)
+		width1 = round(abs(self.bound_bottom_right1[0] - self.bound_top_left1[0])*self.resize_ratio)
+		height1 = round(abs(self.bound_bottom_right1[1] - self.bound_top_left1[1])*self.resize_ratio)
+		#second bounding box
+		start_x2 = round(self.bound_top_left2[0]*self.resize_ratio)
+		start_y2 = round(self.bound_top_left2[1]*self.resize_ratio)
+		width2 = round(abs(self.bound_bottom_right2[0] - self.bound_top_left2[0])*self.resize_ratio)
+		height2 = round(abs(self.bound_bottom_right2[1] - self.bound_top_left2[1])*self.resize_ratio)
+
 		fps = float(self.fps_entry.get())
 		channel_size_mm = float(self.channel_entry.get())
 		channel_size_px = (((self.intersect_point[0]-self.channel_selections[2][0])**2 + (self.intersect_point[1]-self.channel_selections[2][1])**2)**0.5)*self.resize_ratio
@@ -227,14 +244,21 @@ class SetupGUI:
 		self.root.destroy()
 
 		#Run the analysis
-		analysis = Analysis(fps, conversion_factor, start_x, start_y, width,height, self.frame_list, self.vid_path)
+		analysis1 = Analysis(fps, conversion_factor, start_x1, start_y1, width1,height1, self.frame_list, self.vid_path)
 
 		#Display the analysis GUI
-		analysis_gui = AnalysisGUI(analysis)
+		#analysis_gui1 = AnalysisGUI(analysis1)
+
+		#Run analysis for second box
+		analysis2 = Analysis(fps, conversion_factor, start_x2, start_y2, width2,height2, self.frame_list, self.vid_path)
+
+		#Display the analysis GUI
+		#analysis_gui1 = AnalysisGUI(analysis2)
+		test = "hel"
 
 	def drawGUI(self):
 		"""Draw thee elements in the canvas that need to be displayed"""
-		
+
 		#Actually draw the current frame
 		self.canvas.create_image(0,0, anchor="nw", image=self.img)
 
@@ -242,38 +266,47 @@ class SetupGUI:
 		#Helpful text
 		mtext = "Press cancel to start over"
 		if self.select_index < 2:
-			mtext = "Draw bounding box"
+			mtext = "Draw first bounding box"
 		elif self.select_index < 3:
-			mtext = "Draw start of line segment"
+			mtext = "Draw second bounding box"
 		elif self.select_index < 4:
-			mtext = "Draw end of line segment"
+			mtext = "Draw start of line segment"
 		elif self.select_index < 5:
+			mtext = "Draw end of line segment"
+		elif self.select_index < 6:
 			mtext = "Draw point off of segment"
-		
-		self.canvas.create_text(10,10,fill="white",anchor="nw",font="Times 12",text=mtext)	
-		
 
-		
+		self.canvas.create_text(10,10,fill="white",anchor="nw",font="Times 12",text=mtext)
+
+
+
 		#Draw the bounding box
 		if(self.select_index>1):
-			self.canvas.create_line(self.bound_top_left[0], self.bound_top_left[1], self.bound_top_left[0], self.bound_bottom_right[1], fill="green")
-			self.canvas.create_line(self.bound_top_left[0], self.bound_top_left[1], self.bound_bottom_right[0], self.bound_top_left[1], fill="green")
-			self.canvas.create_line(self.bound_top_left[0], self.bound_bottom_right[1], self.bound_bottom_right[0], self.bound_bottom_right[1], fill="green")
-			self.canvas.create_line(self.bound_bottom_right[0], self.bound_top_left[1], self.bound_bottom_right[0], self.bound_bottom_right[1], fill="green")
+			self.canvas.create_line(self.bound_top_left1[0], self.bound_top_left1[1], self.bound_top_left1[0], self.bound_bottom_right1[1], fill="green")
+			self.canvas.create_line(self.bound_top_left1[0], self.bound_top_left1[1], self.bound_bottom_right1[0], self.bound_top_left1[1], fill="green")
+			self.canvas.create_line(self.bound_top_left1[0], self.bound_bottom_right1[1], self.bound_bottom_right1[0], self.bound_bottom_right1[1], fill="green")
+			self.canvas.create_line(self.bound_bottom_right1[0], self.bound_top_left1[1], self.bound_bottom_right1[0], self.bound_bottom_right1[1], fill="green")
+
+		if(self.select_index>2):
+			self.canvas.create_line(self.bound_top_left2[0], self.bound_top_left2[1], self.bound_top_left2[0], self.bound_bottom_right2[1], fill="orange")
+			self.canvas.create_line(self.bound_top_left2[0], self.bound_top_left2[1], self.bound_bottom_right2[0], self.bound_top_left2[1], fill="orange")
+			self.canvas.create_line(self.bound_top_left2[0], self.bound_bottom_right2[1], self.bound_bottom_right2[0], self.bound_bottom_right2[1], fill="orange")
+			self.canvas.create_line(self.bound_bottom_right2[0], self.bound_top_left2[1], self.bound_bottom_right2[0], self.bound_bottom_right2[1], fill="orange")
+
 
 		#Draw the user selected line segment points
-		if(self.select_index>2):
-			for i in range(0,self.select_index-2):
+		if(self.select_index>3):
+			for i in range(0,self.select_index-3):
 				#These 2 lines make an x
 				self.canvas.create_line((self.channel_selections[i][0])-3, (self.channel_selections[i][1])-3, (self.channel_selections[i][0])+3, (self.channel_selections[i][1])+3, fill="red")
 				self.canvas.create_line((self.channel_selections[i][0])-3, (self.channel_selections[i][1])+3, (self.channel_selections[i][0])+3, (self.channel_selections[i][1])-3, fill="red")
 
 		#Draw the line segment
-		if(self.select_index>3):
+		if(self.select_index>4):
 			self.canvas.create_line(self.channel_selections[0][0],self.channel_selections[0][1],self.channel_selections[1][0],self.channel_selections[1][1],fill="red")
 
 		#Draw the intersection point, and the perpendicular distance to the third point
-		if(self.select_index>4):
+		if(self.select_index>5):
 			self.canvas.create_line((self.intersect_point[0])-3, (self.intersect_point[1])+3, (self.intersect_point[0])+3, (self.intersect_point[1])-3, fill="blue")
 			self.canvas.create_line((self.intersect_point[0])-3, (self.intersect_point[1])-3, (self.intersect_point[0])+3, (self.intersect_point[1])+3, fill="blue")
 
@@ -282,8 +315,8 @@ class SetupGUI:
 	def cancel(self):
 		"""Reset all user inputs"""
 		self.select_index = 0
-		self.bound_top_left = [-1,-1]
-		self.bound_bottom_right = [-1,-1]
+		self.bound_top_left1 = [-1,-1]
+		self.bound_bottom_right1 = [-1,-1]
 		self.drawGUI()
 
 
