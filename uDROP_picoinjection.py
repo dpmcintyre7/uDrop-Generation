@@ -245,15 +245,14 @@ class SetupGUI:
 
 		#Run the analysis
 		analysis1 = Analysis(fps, conversion_factor, start_x1, start_y1, width1,height1, self.frame_list, self.vid_path)
-
 		#Display the analysis GUI
-		#analysis_gui1 = AnalysisGUI(analysis1)
+		analysis_gui1 = AnalysisGUI(analysis1)
 
 		#Run analysis for second box
 		analysis2 = Analysis(fps, conversion_factor, start_x2, start_y2, width2,height2, self.frame_list, self.vid_path)
 
 		#Display the analysis GUI
-		#analysis_gui1 = AnalysisGUI(analysis2)
+#		analysis_gui1 = AnalysisGUI(analysis2)
 		test = "hel"
 
 	def drawGUI(self):
@@ -372,8 +371,8 @@ class Analysis:
 		"""Read the default params from params.cfg
 		Uses hardcoded defaults if it fails to find params.cfg
 		"""
-	
-		self.canny_weights = [100,40] #Default tolerances for edge detection
+
+		self.canny_weights = [100,90] #Default tolerances for edge detection
 		self.wave_weights = [0.5,0.25,0.1] #Wave smoothing default weights
 
 		#Read user parameters defaults if they choose to change them
@@ -413,9 +412,10 @@ class Analysis:
 		return numpy.asarray(Image.open("output/edge/"+str(count)+"edge"+".png"))
 
 
-	def cleanFrame(self,focus_frame):
+	def cleanFrame(self,focus_frame, kernel_size=4):
 		"""Apply blurs and edge detection to frame"""
-		return cv2.Canny(cv2.blur(focus_frame,(4,4)),self.canny_weights[0],self.canny_weights[1])
+#		return cv2.Canny(cv2.bilateralFilter(focus_frame, 20, 100, 5), self.canny_weights[0], self.canny_weights[1])
+		return cv2.Canny(cv2.blur(focus_frame,(kernel_size, kernel_size)),self.canny_weights[0],self.canny_weights[1])
 
 	def createWave(self):
 		"""Create a wave of data from the average pixel values of each edge detected frame"""
@@ -434,7 +434,7 @@ class Analysis:
 			arr = self.cleanFrame(b)
 			Image.fromarray(arr).save("output/edge/"+str(i)+"edge"+".png")
 
-			this_avg = numpy.mean(arr);
+			this_avg = -numpy.mean(arr);
 			self.avg_pixel_vals.append(this_avg)
 			
 			with open("output/sin.csv","a") as fout:
@@ -489,7 +489,7 @@ class Analysis:
 		hull = cv2.convexHull(outer_contour)
 
 		#Fit a rectangle to the hull
-		rect = cv2.minAreaRect(hull)
+		rect = cv2.minAreaRect(hull) # THIS MEANS I NEED DROPLETS IN FOV
 
 		#Get major axis of diameter
 		diameter = max(rect[1])
@@ -520,15 +520,19 @@ class Analysis:
 		self.max_list = []
 
 		self.meanVal = sum(self.avg_pixel_vals)/len(self.avg_pixel_vals)
+		topVal = numpy.percentile(self.avg_pixel_vals, 90)
 		tempValList = []
 		#Loop through our wave data and get the maxes
 		for i in range(1,len(self.avg_pixel_vals)-1):
-			if self.avg_pixel_vals[i] < self.meanVal :
+			#if self.avg_pixel_vals[i] < self.meanVal :
+			if self.avg_pixel_vals[i] < topVal:
 
+				# THIS IS WHAT IS GIVING ME FALSE POSITIVES
 				#Log the one true max that occured above the mean
 				if len(tempValList) > 0:
-					self.max_list.append(max(tempValList)[1])
-					tempValList = []
+					if len(self.max_list) == 0 or max(tempValList)[1] - max(self.max_list) > 50:
+						self.max_list.append(max(tempValList)[1])
+						tempValList = []
 
 				#Find if the below average points are a minimum
 				if self.avg_pixel_vals[i] <= self.avg_pixel_vals[i-1] and self.avg_pixel_vals[i] <= self.avg_pixel_vals[i+1]: #Local min
@@ -541,6 +545,12 @@ class Analysis:
 				#Log all local maxes between when tedge goes above the mean and when it dips below
 				tempValList.append((self.avg_pixel_vals[i],i))
 
+		#QC Max List for double counts
+		# TODO: NEED TO STANDARDIZE THIS BETTER
+		diff = [self.max_list[0]] + [self.max_list[i] - self.max_list[i-1] for i in range(1, len(self.max_list))]
+		print(diff)
+		#self.max_list = [dp for i, dp in enumerate(self.max_list) if (diff[i] - numpy.mean(diff)) < 1.5 * numpy.std(diff)]
+		#self.max_list = [dp for i, dp in enumerate(self.max_list) if diff[i] > 50]
 
 		if(self.max_list[-1] > self.end_valley):
 			self.max_list = self.max_list[:-1] #We don't want to count maxes outside of the range of the data we are looking at
@@ -559,7 +569,7 @@ class Analysis:
 		"""Calculate the diameters at each local max"""
 		self.drop_diameters = []
 		for i in self.max_list:
-			diameter,img = self.getDiameter(self.getEdgeFrame(i))	
+			diameter,img = self.getDiameter(self.getEdgeFrame(i))
 			self.drop_diameters.append(diameter)
 			Image.fromarray(img).save("output/cleaned/"+str(i)+"cleaned"+".png")
 	
@@ -975,3 +985,7 @@ class AnalysisGUI:
 
 #Commands to run when script is called
 SetupGUI(sys.argv[1] if len(sys.argv)>1 else "")
+#TODO: Automate pairing of droplets to calculate % volume change (i.e picoinjector volume)
+#TODO: Predict variance in total amont added (is this possible??)
+#TODO: See if open cv2 can measure color intensity values (double check analysis)
+#TODO: (not priority) collapse GUIs into a single platform
